@@ -1,0 +1,39 @@
+{
+  "name": "ai-academic-status-system",
+  "version": "1.0.0",
+  "description": "基于Deepseek API的AI对话式学情收集系统",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "install-deps": "npm install",
+    "build": "echo '前端文件已包含在public目录中'",
+    "test": "node scripts/smoke-test.js",
+    "seed": "node scripts/seed-demo-data.js"
+  },
+  "keywords": [
+    "ai",
+    "education",
+    "academic-status",
+    "deepseek",
+    "nodejs"
+  ],
+  "author": "AI开发团队",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "openai": "^4.26.0",
+    "exceljs": "^4.4.0",
+    "uuid": "^9.0.1",
+    "moment": "^2.29.4",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
+

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI学情收集助手</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>AI学情收集助手</h1>
+                    <p class="subtitle">智能对话式学情数据收集系统</p>
+                </div>
+                <div class="status-indicator">
+                    <span id="connection-status" class="status-dot connecting"></span>
+                    <span id="status-text">连接中...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主要内容区 -->
+        <main class="main-content">
+            <!-- 聊天界面 -->
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h2>学情对话助手</h2>
+                    <button id="new-session-btn" class="btn btn-secondary">新建会话</button>
+                </div>
+                
+                <div id="chat-messages" class="chat-messages">
+                    <!-- 消息将在这里动态添加 -->
+                    <div class="message system">
+                        <div class="message-avatar">AI</div>
+                        <div class="message-content">
+                            <div class="message-text">AI学情收集助手正在加载中...</div>
+                            <div class="message-time">--</div>
+                        </div>
+                    </div>
+                    <div id="typing-indicator" class="message ai typing hidden">
+                        <div class="message-avatar">AI</div>
+                        <div class="message-content">
+                            <div class="message-text">执行中...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <input 
+                            type="text" 
+                            id="user-input" 
+                            placeholder="输入学情信息或向我提问..."
+                            autocomplete="off"
+                        >
+                        <button id="send-btn" class="btn btn-primary">发送</button>
+                    </div>
+                    <div class="input-hint">
+                        提示：可像聊天一样填报今日学情，也可以直接向我提问
+                    </div>
+                </div>
+            </div>
+
+            <!-- 侧边栏 -->
+            <aside class="sidebar">
+                <!-- 会话信息 -->
+                <div class="sidebar-section">
+                    <h3>会话信息</h3>
+                    <div class="session-info">
+                        <div class="info-item">
+                            <span class="info-label">会话ID：</span>
+                            <span id="session-id" class="info-value">未开始</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">当前状态：</span>
+                            <span id="session-state" class="info-value">等待开始</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 快速操作 -->
+                <div class="sidebar-section">
+                    <h3>快速操作</h3>
+                    <div class="quick-actions">
+                        <button id="download-today-btn" class="btn btn-outline">
+                            下载今日报表
+                        </button>
+                        <button id="view-history-btn" class="btn btn-outline">
+                            查看历史记录
+                        </button>
+                        <button id="view-students-btn" class="btn btn-outline">
+                            学生情况
+                        </button>
+                        <button id="import-students-quick-btn" class="btn btn-outline">
+                            导入学生数据
+                        </button>
+                        <button id="settings-btn" class="btn btn-outline">
+                            API设置
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 系统状态 -->
+                <div class="sidebar-section">
+                    <h3>系统状态</h3>
+                    <div class="system-status">
+                        <div class="status-item">
+                            <span class="status-label">运行时间：</span>
+                            <span id="uptime" class="status-value">--</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">活跃会话：</span>
+                            <span id="active-sessions" class="status-value">--</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">今日记录：</span>
+                            <span id="today-records" class="status-value">--</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">AI服务：</span>
+                            <span id="ai-mode" class="status-value">检测中</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- 底部 -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>AI学情收集助手 v1.0 | 局域网部署 | 数据本地存储</p>
+                <p>支持多平台访问 | 零安装使用 | 智能对话交互</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 历史记录模态框 -->
+    <div id="history-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>历史学情记录</h3>
+                <div class="modal-header-actions">
+                    <button id="open-students-btn" class="btn btn-outline btn-sm">学生情况</button>
+                    <button class="modal-close">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="history-filters">
+                    <input type="date" id="history-start-date" placeholder="开始日期">
+                    <input type="date" id="history-end-date" placeholder="结束日期">
+                    <select id="history-class">
+                        <option value="">所有班级</option>
+                    </select>
+                    <select id="history-student-category">
+                        <option value="">全部学情</option>
+                    </select>
+                    <button id="apply-filters-btn" class="btn btn-primary">应用筛选</button>
+                </div>
+                <div id="history-list" class="history-list">
+                    <!-- 历史记录将在这里显示 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 学生情况模态框 -->
+    <div id="students-modal" class="modal">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h3>学生情况</h3>
+                <div class="modal-header-actions">
+                    <button id="refresh-students-btn" class="btn btn-outline btn-sm">刷新</button>
+                    <button id="import-students-btn" class="btn btn-outline btn-sm">导入</button>
+                    <button class="modal-close">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="student-meta" class="student-meta"></div>
+                <input type="text" id="student-search" class="student-search" placeholder="搜索姓名、班级、联系电话等">
+                <div id="student-tabs" class="tabs"></div>
+                <div id="student-table-wrap" class="student-table-wrap"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI服务设置模态框 -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>AI服务设置</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="settings-status" class="settings-status"></div>
+                <div class="settings-form">
+                    <label for="settings-api-key">DeepSeek API Key</label>
+                    <input type="password" id="settings-api-key" placeholder="sk-..." autocomplete="off">
+                    <label for="settings-base-url">接口地址（可选）</label>
+                    <input type="text" id="settings-base-url" placeholder="https://api.deepseek.com">
+                    <label for="settings-model">模型（可选）</label>
+                    <input type="text" id="settings-model" placeholder="deepseek-chat">
+                </div>
+                <div class="settings-actions">
+                    <button id="save-settings-btn" class="btn btn-primary">保存设置</button>
+                    <button id="clear-settings-btn" class="btn btn-outline">清除Key</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载指示器 -->
+    <!-- 消息提示 -->
+    <div id="toast" class="toast hidden">
+        <div class="toast-content"></div>
+    </div>
+
+    <!-- 学生数据导入文件选择 -->
+    <input type="file" id="student-import-file" accept=".xlsx" class="hidden">
+
+    <!-- JavaScript -->
+    <script src="js/main.js"></script>
+</body>
+</html>
