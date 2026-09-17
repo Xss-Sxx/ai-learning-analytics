@@ -1,9 +1,19 @@
-/* 端到端冒烟测试：验证核心填报流程 */
+/**
+ * scripts/smoke-test.js —— 端到端冒烟测试（npm test）
+ *
+ * 前提：服务已启动（默认 http://localhost:3000，可用 BASE_URL 环境变量覆盖）。
+ * 覆盖内容：
+ *  1) 基础接口可用性：健康检查 / 基础配置 / AI 设置 / 学生情况 / 会话 / 统计等；
+ *  2) 完整填报链路：抽取学情 → 确认 → 生成 Excel → 下载报表 → 查询单条记录；
+ *  3) 回归用例：针对历史上出现过的 4 个缺陷做防护性断言（见下方"回归用例"）。
+ */
+
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 
-let passed = 0;
-let failed = 0;
+let passed = 0;   // 通过计数
+let failed = 0;   // 失败计数
 
+// 断言辅助：输出 PASS/FAIL 并累计计数（便于最后统一给出结果与退出码）
 function check(name, ok, detail = '') {
   if (ok) {
     passed++;
@@ -14,6 +24,7 @@ function check(name, ok, detail = '') {
   }
 }
 
+// 统一的接口请求封装：自动带 JSON 头，并尽量把响应解析成对象
 async function api(path, options = {}) {
   const res = await fetch(BASE + path, {
     ...options,
@@ -21,20 +32,24 @@ async function api(path, options = {}) {
   });
   const text = await res.text();
   let body = null;
-  try { body = JSON.parse(text); } catch (_) { body = text; }
+  try { body = JSON.parse(text); } catch (_) { body = text; }   // 非 JSON 时保留原文，便于排查
   return { status: res.status, body };
 }
 
 async function main() {
+  // ---------- 基础接口可用性 ----------
   const health = await api('/api/health');
   check('健康检查', health.status === 200 && health.body.status === 'healthy', JSON.stringify(health.body));
 
+  // 班级列表必须非空，否则后续填报流程无法进行
   const meta = await api('/api/meta');
   check('基础配置接口', meta.status === 200 && meta.body.success && meta.body.data.classes.length > 0, JSON.stringify(meta.body).slice(0, 200));
 
+  // 模式只能是 offline 或 ai
   const settings = await api('/api/settings');
   check('AI设置状态', settings.status === 200 && settings.body.success && ['offline', 'ai'].includes(settings.body.data.mode), JSON.stringify(settings.body).slice(0, 200));
 
+  // 学生情况需至少 5 个分类且包含汇总表
   const students = await api('/api/students/overview');
   check('学生情况总览', students.status === 200 && students.body.success &&
     students.body.data.categories.length >= 5 && !!students.body.data.summary,
@@ -43,10 +58,12 @@ async function main() {
   const refreshStudents = await api('/api/students/refresh', { method: 'POST', body: '{}' });
   check('学生情况实时刷新', refreshStudents.status === 200 && refreshStudents.body.success, JSON.stringify(refreshStudents.body).slice(0, 200));
 
+  // ---------- 完整填报链路 ----------
   const session = await api('/api/session', { method: 'POST', body: '{}' });
   check('创建会话', session.status === 200 && session.body.success && !!session.body.sessionId, JSON.stringify(session.body));
   const sessionId = session.body.sessionId;
 
+  // 一条包含班级/学科/教师/出勤/作业/学生动态的完整消息，验证抽取准确度
   const msg = '初一(1)班 语文 胡芳老师 今天到课45人，缺勤2人，病假1人事假1人，课堂表现良好，作业完成43人，未完成2人，不会做，张三今天情绪低落';
   const collect = await api('/api/message', {
     method: 'POST',
@@ -58,6 +75,7 @@ async function main() {
     data.attendance === 45 && data.absent === 2,
     JSON.stringify(collect.body).slice(0, 400));
 
+  // 确认后应进入 completed 状态并落盘数据
   const confirm = await api('/api/message', {
     method: 'POST',
     body: JSON.stringify({ sessionId, message: '确认' })
@@ -65,9 +83,10 @@ async function main() {
   check('确认并生成Excel', confirm.status === 200 && confirm.body.success && confirm.body.state === 'completed' && confirm.body.action === 'completed',
     JSON.stringify(confirm.body).slice(0, 400));
 
-  // --- 回归用例：历史缺陷防护 ---
+  // ---------- 回归用例：历史缺陷防护 ----------
 
   // 1) 闲聊不得写入学情记录（原缺陷：关键词过宽，"今天天气很好"被当成学情）
+  //    断言方式：闲聊前后历史记录条数必须不变
   const beforeChat = await api('/api/history');
   const beforeCount = (beforeChat.body.data || []).length;
   const chatSession = await api('/api/session', { method: 'POST', body: '{}' });
@@ -81,6 +100,7 @@ async function main() {
     `before=${beforeCount} after=${afterCount}`);
 
   // 2) 表扬词中的"常好"不得被识别为学生（原缺陷：臆造姓名正则）
+  //    "非常好"里含有"常好"，若正则设计不当会被当成学生姓名记录
   const praiseRes = await api('/api/message', {
     method: 'POST',
     body: JSON.stringify({ sessionId: chatSession.body.sessionId, message: '初一(1)班课堂表现非常好，学生积极参与' })
@@ -90,6 +110,7 @@ async function main() {
     `concerns=${praiseConcerns}`);
 
   // 3) 教师姓名不得被记为学生（原缺陷：老师名同时在学生名单中）
+  //    杨秀英同时在教师名单与学生名单里，需正确识别为教师
   const teacherRes = await api('/api/message', {
     method: 'POST',
     body: JSON.stringify({ sessionId: chatSession.body.sessionId, message: '杨秀英今天表现非常好' })
@@ -99,6 +120,7 @@ async function main() {
     `concerns=${teacherConcerns}`);
 
   // 4) 未说明缺勤人数时不得凭空推算（原缺陷：硬编码 50 人基数）
+  //    本次消息只给出到课人数，absent 必须保持为空/0，不能自动算出数字
   const noAbsentSession = await api('/api/session', { method: 'POST', body: '{}' });
   await api('/api/message', {
     method: 'POST',
@@ -112,24 +134,29 @@ async function main() {
   check('未说明缺勤时不凭空推算', absentVal === null || absentVal === undefined || absentVal === 0,
     `absent=${JSON.stringify(absentVal)}`);
 
+  // ---------- 历史与统计接口 ----------
   const history = await api('/api/history');
   check('历史记录查询', history.status === 200 && history.body.success && history.body.count >= 1, JSON.stringify(history.body).slice(0, 300));
 
   const todayStr = new Date().toISOString().slice(0, 10);
+  // 按当天日期筛选，结果应至少含前面刚确认的那条记录
   const historyFiltered = await api(`/api/history?startDate=${todayStr}&endDate=${todayStr}`);
   check('历史记录日期筛选', historyFiltered.status === 200 && historyFiltered.body.success && historyFiltered.body.count >= 1, JSON.stringify(historyFiltered.body).slice(0, 300));
 
   const stats = await api('/api/stats');
   check('统计接口', stats.status === 200 && stats.body.success && typeof stats.body.data.totalReports === 'number', JSON.stringify(stats.body).slice(0, 300));
 
+  // ---------- 报表生成与下载 ----------
   const today = todayStr;
   const genToday = await api('/api/generate-today', { method: 'POST', body: '{}' });
   check('生成当日汇总Excel', genToday.status === 200 && genToday.body.success, JSON.stringify(genToday.body).slice(0, 300));
 
   const dl = await fetch(`${BASE}/api/download/${today}`);
   const dlBuf = Buffer.from(await dl.arrayBuffer());
+  // xlsx 是 zip 格式，首字节应为 'P'(0x50)，用它确认下载到的确实是 xlsx
   check('下载当日Excel', dl.status === 200 && dlBuf.length > 0 && dlBuf[0] === 0x50, `status=${dl.status} size=${dlBuf.length}`);
 
+  // ---------- 单条记录查看与下载（依赖历史列表中的第一条） ----------
   const recordName = history.body.data[0] && history.body.data[0].fileName;
   if (recordName) {
     const rec = await api(`/api/record/${recordName}`);
@@ -138,15 +165,16 @@ async function main() {
     const dlRec = await fetch(`${BASE}/api/download-record/${recordName}`);
     check('下载单条记录', dlRec.status === 200 && (await dlRec.arrayBuffer()).byteLength > 0, `status=${dlRec.status}`);
   } else {
+    // 历史为空时视为失败，避免出现"静默通过"
     check('查看单条记录', false, '历史列表为空');
     check('下载单条记录', false, '历史列表为空');
   }
 
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
-  process.exit(failed === 0 ? 0 : 1);
+  process.exit(failed === 0 ? 0 : 1);   // 全通过才返回 0，便于接入 CI
 }
 
 main().catch(err => {
   console.error('测试执行异常:', err);
-  process.exit(1);
+  process.exit(1);   // 请求异常同样视为失败
 });

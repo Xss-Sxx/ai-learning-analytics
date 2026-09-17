@@ -1,3 +1,17 @@
+/**
+ * utils/excel-generator.js —— Excel 报表生成器
+ *
+ * 负责三类报表：
+ *  1) generateReport()        单条学情记录的明细表（教师确认后立即生成）；
+ *  2) generateTodayReport()   当日汇总表：汇总页 + 详细记录 + 统计分析 + 学生情况分表；
+ *  3) generateMonthlyReport() 月度报表：汇总页 + 详细记录 + 趋势分析。
+ *
+ * 设计要点：
+ *  - 数字字段统一用 toNum 归一：null 表示"无数据"，与真实的 0 区分开；
+ *  - 缺失数据在表格中统一显示为 "—"，比率分母为 0 时也显示 "—"，避免出现 NaN/Infinity；
+ *  - "纯学生动态"记录（只有 concerns 没有学情字段）不参与出勤/作业统计，单独成区展示。
+ */
+
 const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs-extra');
@@ -5,12 +19,17 @@ const moment = require('moment');
 const studentData = require('./student-data');
 
 class ExcelGenerator {
+  /**
+   * @param {object} config 全局配置
+   */
   constructor(config) {
     this.config = config;
+    // 报表输出目录：优先取 config.dataDir/reports，兜底用相对路径
     this.reportsDir = config.dataDir ? path.join(config.dataDir, 'reports') : path.join(__dirname, '../data/reports');
     this.ensureDirectories();
   }
 
+  // 确保报表目录存在
   ensureDirectories() {
     fs.ensureDirSync(this.reportsDir);
   }
@@ -22,17 +41,22 @@ class ExcelGenerator {
     if (value === null || value === undefined) return '';
     const text = String(value).trim();
     if (!text) return '';
+    // 中文数字 → 阿拉伯数字的映射表（用于"初一班"这类写法）
     const cnMap = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
-    if (/^初[一二三四五六七八九]\([1-9]\)班$/.test(text)) return text;
+    if (/^初[一二三四五六七八九]\([1-9]\)班$/.test(text)) return text;   // 已是标准格式，直接返回
+    // "初一（1）班" / "初一(1)班" → "初一(1)班"（统一括号为半角）
     let m = text.match(/^初[一二三四五六七八九][（(](\d+)[)）]班?$/);
     if (m) return '初' + text[1] + '(' + m[1] + ')班';
+    // "初一1班" → "初一(1)班"
     m = text.match(/^初[一二三四五六七八九]\s*(\d+)\s*班?$/);
     if (m) return '初' + text[1] + '(' + m[1] + ')班';
+    // "1班" → "初一(1)班"
     m = text.match(/^(\d+)\s*班$/);
     if (m) return '初一(' + m[1] + ')班';
+    // "一班" → "初一(1)班"
     m = text.match(/^([一二三四五六七八九])\s*班$/);
     if (m && cnMap[m[1]]) return '初一(' + cnMap[m[1]] + ')班';
-    return text;
+    return text;   // 无法识别时原样返回，避免丢信息
   }
 
   // 把数字字段统一为 number 或 null（null 表示"无数据"，与 0 区分）
@@ -59,6 +83,7 @@ class ExcelGenerator {
   // 判断一条记录是否"仅有学生动态"（无任何学情字段）
   isStudentDynamic(record) {
     const empty = (v) => v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v));
+    // 出勤/作业/课堂表现全为空，但关注事项有内容 → 视为纯学生动态
     const hasAcademic = !empty(record.attendance) || !empty(record.absent) ||
                         !empty(record.homeworkCompleted) || !empty(record.homeworkNotCompleted) ||
                         !empty(record.performance);
@@ -71,6 +96,7 @@ class ExcelGenerator {
     try {
       const overview = await studentData.getOverview(this.config);
       for (const cat of overview.categories || []) {
+        // 找到"班级"列，逐行累加人数
         const classIdx = cat.headers.findIndex(h => String(h).includes('班级'));
         if (classIdx === -1) continue;
         for (const row of cat.rows) {
@@ -80,6 +106,7 @@ class ExcelGenerator {
         }
       }
     } catch (e) {
+      // 花名册读取失败不影响报表生成，仅告警
       console.warn('buildClassRoster 失败（不影响主流程）:', e.message);
     }
     return map;
@@ -89,13 +116,16 @@ class ExcelGenerator {
   parseConcernParts(concerns) {
     if (!concerns) return [];
     const out = [];
+    // 关注事项用中文分号分隔，逐段解析
     for (const raw of String(concerns).split(/[；;]/)) {
       const part = raw.trim();
       if (!part) continue;
+      // 结构化格式："姓名（初一(N)班）事项内容"
       const m = part.match(/^(.+?)（(初一\(\d+\)班)）\s*(.+)$/);
       if (m) {
         out.push({ name: m[1], className: m[2], text: m[3] });
       } else {
+        // 非结构化文本：只保留内容
         out.push({ name: '', className: '', text: part });
       }
     }
@@ -108,11 +138,12 @@ class ExcelGenerator {
   async generateReport(academicData) {
     try {
       const date = moment(academicData.date || moment().format('YYYY-MM-DD')).format('YYYY-MM-DD');
-      const fileName = this.config.excel.filename.replace('{date}', date);
+      const fileName = this.config.excel.filename.replace('{date}', date);   // 文件名模板替换日期
       const filePath = path.join(this.reportsDir, fileName);
 
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet(`${date}学情记录`);
+      // 用配置里的列表头初始化工作表列
       const headers = this.config.excel.columns;
       worksheet.columns = headers.map(col => ({
         header: col.header,
@@ -120,6 +151,7 @@ class ExcelGenerator {
         width: col.width || 15
       }));
 
+      // 组装数据行：数字字段经 toNum + fmt 处理（无数据 → "—"）
       const dataRow = {
         date: academicData.date || moment().format('YYYY-MM-DD'),
         class: this.normalizeClassName(academicData.class),
@@ -136,7 +168,7 @@ class ExcelGenerator {
         submittedAt: academicData.submittedAt || moment().format('YYYY-MM-DD HH:mm:ss')
       };
       worksheet.addRow(dataRow);
-      this.applyStyles(worksheet);
+      this.applyStyles(worksheet);    // 统一套用表头与斑马纹样式
       await workbook.xlsx.writeFile(filePath);
       console.log('Excel报告已生成: ' + filePath);
       return filePath;
@@ -154,6 +186,7 @@ class ExcelGenerator {
       const files = await fs.readdir(sessionDir);
       const todayData = [];
 
+      // 遍历会话目录，筛选出目标日期的记录
       for (const file of files) {
         if (file.endsWith('.json')) {
           const filePath = path.join(sessionDir, file);
@@ -164,7 +197,7 @@ class ExcelGenerator {
         }
       }
 
-      // 按班级和学科排序
+      // 按班级和学科排序，保证报表顺序稳定、便于阅读
       todayData.sort((a, b) => {
         const classA = String(a.class || '');
         const classB = String(b.class || '');
@@ -185,19 +218,19 @@ class ExcelGenerator {
 
       const workbook = new ExcelJS.Workbook();
 
-      // 汇总表（按 班级-学科 聚合 + 学生动态区）
+      // 工作表 1：汇总表（按 班级-学科 聚合 + 学生动态区）
       const summarySheet = workbook.addWorksheet(`${targetDate}汇总`);
       this.createSummarySheet(summarySheet, todayData, classRoster);
 
-      // 详细记录表
+      // 工作表 2：详细记录表（逐条原始记录）
       const detailSheet = workbook.addWorksheet(`${targetDate}详细记录`);
       this.createDetailSheet(detailSheet, todayData);
 
-      // 统计分析表
+      // 工作表 3：统计分析表（出勤率、作业完成率、优秀率等）
       const analysisSheet = workbook.addWorksheet(`${targetDate}统计分析`);
       await this.createAnalysisSheet(analysisSheet, todayData);
 
-      // 学生情况工作表（格式与《初一学生情况汇总表》一致）
+      // 工作表 4..N：学生情况各分类工作表（格式与《初一学生情况汇总表》一致）
       await this.addStudentSheets(workbook);
 
       await workbook.xlsx.writeFile(filePath);
@@ -214,8 +247,10 @@ class ExcelGenerator {
     try {
       const overview = await studentData.getOverview(this.config);
 
+      // 先写"汇总表"（类别/人数统计）
       if (overview.summary) {
         const sheet = workbook.addWorksheet('学生情况汇总');
+        // 分类工作表的列名来自 xlsx 表头，动态生成 key（col_0, col_1 ...）
         sheet.columns = overview.summary.headers.map((header, index) => ({
           header,
           key: 'col_' + index,
@@ -229,6 +264,7 @@ class ExcelGenerator {
         this.applyStyles(sheet);
       }
 
+      // 再依次写各分类工作表（留守儿童、特殊生、问题学生、逃学厌学等）
       for (const category of overview.categories) {
         const sheet = workbook.addWorksheet(category.name);
         sheet.columns = category.headers.map((header, index) => ({
@@ -246,6 +282,7 @@ class ExcelGenerator {
 
       return true;
     } catch (error) {
+      // 学生情况数据缺失/损坏时不让整份报表生成失败
       console.warn('添加学生情况工作表失败（不影响主报表）:', error.message);
       return false;
     }
@@ -256,7 +293,7 @@ class ExcelGenerator {
     const clean = { ...record };
     const numericFields = ['attendance', 'absent', 'homeworkCompleted', 'homeworkNotCompleted'];
     for (const field of numericFields) {
-      clean[field] = this.toNum(clean[field]);
+      clean[field] = this.toNum(clean[field]);   // 非法/空值统一为 null
     }
     clean.class = this.normalizeClassName(clean.class);
     clean.subject = clean.subject ? String(clean.subject).trim() : '';
@@ -296,9 +333,9 @@ class ExcelGenerator {
       if (!should) continue;
       const att = record.attendance, ab = record.absent;
       if ((att === null || att === 0) && ab && ab > 0 && should > ab) {
-        record.attendance = should - ab;
+        record.attendance = should - ab;      // 有缺勤无出勤 → 出勤 = 应到 - 缺勤
       } else if ((ab === null || ab === 0) && att && att > 0 && should > att) {
-        record.absent = should - att;
+        record.absent = should - att;         // 有出勤无缺勤 → 缺勤 = 应到 - 出勤
       }
     }
 
@@ -307,6 +344,7 @@ class ExcelGenerator {
 
   // 创建汇总工作表：按 班级-学科 聚合；纯学生动态另起一区
   createSummarySheet(worksheet, data, classRoster) {
+    // 汇总页列定义（与详细记录的"原始字段"不同，这里是聚合口径）
     worksheet.columns = [
       { header: '班级', key: 'class', width: 12 },
       { header: '学科', key: 'subject', width: 10 },
@@ -320,7 +358,7 @@ class ExcelGenerator {
       { header: '需关注事项', key: 'concerns', width: 30 }
     ];
 
-    // 1) 数据分流：纯学生动态 vs 学情记录
+    // 1) 数据分流：纯学生动态 vs 学情记录（后者才参与出勤/作业统计）
     const academicRecords = [];
     const dynamicRecords = [];
     for (const r of data) {
@@ -331,14 +369,15 @@ class ExcelGenerator {
       }
     }
 
-    // 2) 学情记录按 (班级-学科) 聚合
+    // 2) 学情记录按 (班级-学科) 聚合到同一个 Map 中
     const summaryMap = new Map();
     for (const r of academicRecords) {
       const c = r.class || '';
       const s = r.subject || '';
       const t = r.teacher || '';
-      const key = (c || '未分班级') + '||' + (s || '未分学科');
+      const key = (c || '未分班级') + '||' + (s || '未分学科');   // 聚合键
       if (!summaryMap.has(key)) {
+        // 初始化聚合项：记录是否真的有出勤/作业数据，避免把"无数据"当 0 计算
         summaryMap.set(key, {
           class: c, subject: s, teacher: t,
           shouldArrive: null, actualArrive: 0, absent: 0,
@@ -349,6 +388,7 @@ class ExcelGenerator {
       }
       const agg = summaryMap.get(key);
       if (t) agg.teacher = t;
+      // 累加出勤数据，应到人数取同键记录中的最大值
       if (r.attendance !== null || r.absent !== null) {
         agg.hasAttData = true;
         const total = (r.attendance || 0) + (r.absent || 0);
@@ -356,11 +396,13 @@ class ExcelGenerator {
         agg.actualArrive += r.attendance || 0;
         agg.absent += r.absent || 0;
       }
+      // 累加作业数据
       if (r.homeworkCompleted !== null || r.homeworkNotCompleted !== null) {
         agg.hasHwData = true;
         agg.homeworkCompleted += r.homeworkCompleted || 0;
         agg.homeworkTotal += (r.homeworkCompleted || 0) + (r.homeworkNotCompleted || 0);
       }
+      // 文本字段做拼接合并
       if (r.performance) {
         agg.performance = agg.performance ? (agg.performance + '；' + r.performance) : r.performance;
       }
@@ -396,12 +438,13 @@ class ExcelGenerator {
         performance: agg.performance,
         concerns: agg.concerns
       });
+      // 同步累加总计（只有存在真实数据的行才计入）
       if (agg.shouldArrive) totShould += agg.shouldArrive;
       if (agg.hasAttData) { totHasAtt = true; totActual += agg.actualArrive; totAbsent += agg.absent; }
       if (agg.hasHwData) { totHasHw = true; totHwComp += agg.homeworkCompleted; totHwTot += agg.homeworkTotal; }
     }
 
-    // 5) 总计行
+    // 5) 总计行（加粗显示）
     const totalRow = worksheet.addRow({
       class: '总计',
       subject: '',
@@ -416,7 +459,7 @@ class ExcelGenerator {
     });
     totalRow.font = { bold: true };
 
-    // 6) 今日学生动态区
+    // 6) 今日学生动态区：用分隔行把个体事件与学情汇总隔开
     if (dynamicRecords.length > 0) {
       const sep = worksheet.addRow({
         class: '——— 今日学生动态 ———', subject: '', teacher: '',
@@ -430,6 +473,7 @@ class ExcelGenerator {
       for (const d of dynamicRecords) {
         const parts = this.parseConcernParts(d.concerns);
         if (parts.length === 0) {
+          // 没有结构化信息时整段输出
           worksheet.addRow({
             class: d.class || '—',
             subject: '', teacher: '',
@@ -440,6 +484,7 @@ class ExcelGenerator {
           });
           continue;
         }
+        // 结构化信息拆成"姓名：事项"逐行展示
         for (const p of parts) {
           worksheet.addRow({
             class: p.className || d.class || '—',
@@ -459,6 +504,7 @@ class ExcelGenerator {
   // 创建详细记录工作表：缺失数据显示 "—"
   createDetailSheet(worksheet, data) {
     worksheet.columns = this.config.excel.columns;
+    // 逐条输出原始记录，空值统一显示为 "—"
     for (const r of data) {
       worksheet.addRow({
         date: r.date || '',
@@ -487,6 +533,7 @@ class ExcelGenerator {
       { header: '数值', key: 'value', width: 15 }
     ];
 
+    // 统计基数：剔除"纯学生动态"记录，避免个体事件影响出勤/作业口径
     const academicRecords = data.filter(r => !this.isStudentDynamic(r));
     const dynamicCount = data.length - academicRecords.length;
 
@@ -524,13 +571,14 @@ class ExcelGenerator {
     worksheet.addRow({
       dimension: '课堂表现优秀率',
       result: perfRecs.length > 0
+        // 按优秀率分档给出文字结论
         ? (perfRate >= 80 ? '整体表现优秀' : perfRate >= 60 ? '整体表现良好' : '需要关注') +
           '（' + goodPerf + '/' + perfRecs.length + ' 条记录评价为良好以上）'
         : '今日暂无课堂表现数据',
       value: perfRate === null ? '—' : perfRate + '%'
     });
 
-    // 班级出勤率对比
+    // 班级出勤率对比：按班级聚合并找出出勤率最高的班级
     const classStats = {};
     for (const r of attRecs) {
       if (!r.class) continue;
@@ -549,7 +597,7 @@ class ExcelGenerator {
       value: bestClass ? bestRate + '%' : '—'
     });
 
-    // 出勤率 < 90% 的班级
+    // 出勤率 < 90% 的班级（作为需要重点关注的对象）
     const concernClasses = [];
     for (const [c, s] of Object.entries(classStats)) {
       const rate = (s.att + s.ab) > 0 ? Math.round((s.att / (s.att + s.ab)) * 100) : 0;
@@ -561,7 +609,7 @@ class ExcelGenerator {
       value: concernClasses.length > 0 ? concernClasses.length : '0'
     });
 
-    // 学生动态统计
+    // 学生动态统计：只计数，不并入学情指标
     worksheet.addRow({
       dimension: '今日学生动态',
       result: '今日共记录 ' + dynamicCount + ' 条学生个体事件（已汇总至"今日学生动态"区）',
@@ -574,6 +622,7 @@ class ExcelGenerator {
   // 应用样式
   applyStyles(worksheet) {
     const headerRow = worksheet.getRow(1);
+    // 表头：白字 + 蓝底 + 居中
     headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
     headerRow.fill = {
       type: 'pattern',
@@ -582,6 +631,7 @@ class ExcelGenerator {
     };
     headerRow.alignment = { horizontal: 'center' };
 
+    // 数据行：顶端对齐、自动换行，偶数行加浅灰底形成斑马纹
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber > 1) {
         row.alignment = { vertical: 'top', wrapText: true };
@@ -595,6 +645,7 @@ class ExcelGenerator {
       }
     });
 
+    // 列宽上限 20，避免长文本列把表格撑得过宽
     worksheet.columns.forEach(column => {
       if (column.width > 20) column.width = 20;
     });
@@ -606,8 +657,10 @@ class ExcelGenerator {
       const sessionDir = path.join(this.config.dataDir, 'sessions');
       const files = await fs.readdir(sessionDir);
       const monthData = [];
+      // 目标月份字符串，形如 2026-09
       const targetMonth = year + '-' + String(month).padStart(2, '0');
 
+      // 遍历会话目录，收集目标月份的记录
       for (const file of files) {
         if (file.endsWith('.json')) {
           const filePath = path.join(sessionDir, file);
@@ -622,16 +675,20 @@ class ExcelGenerator {
         throw new Error('该月份无数据');
       }
 
+      // 月度报表文件名，如：学情汇总_2026年9月.xlsx
       const fileName = '学情汇总_' + year + '年' + month + '月.xlsx';
       const filePath = path.join(this.reportsDir, fileName);
 
       const workbook = new ExcelJS.Workbook();
+      // 工作表 1：月度汇总指标
       const summarySheet = workbook.addWorksheet(year + '年' + month + '月汇总');
       await this.createMonthlySummary(summarySheet, monthData, year, month);
 
+      // 工作表 2：月度详细记录
       const detailSheet = workbook.addWorksheet(year + '年' + month + '月详细记录');
       this.createMonthlyDetail(detailSheet, monthData);
 
+      // 工作表 3：按日期的趋势分析
       const trendSheet = workbook.addWorksheet(year + '年' + month + '月趋势分析');
       await this.createMonthlyTrend(trendSheet, monthData);
 
@@ -653,15 +710,18 @@ class ExcelGenerator {
     ];
 
     const totalRecords = data.length;
+    // 去重统计覆盖的班级数与学科数
     const totalClasses = [...new Set(data.map(record => record.class).filter(Boolean))].length;
     const totalSubjects = [...new Set(data.map(record => record.subject).filter(Boolean))].length;
 
+    // 仅统计有出勤数据的记录，避免把"无数据"当成 0
     const attRecs = data.filter(r => r.attendance !== null || r.absent !== null);
     const totalAttendance = attRecs.reduce((s, r) => s + (r.attendance || 0), 0);
     const totalAbsent = attRecs.reduce((s, r) => s + (r.absent || 0), 0);
     const avgAttendanceRate = (totalAttendance + totalAbsent) > 0 ?
       Math.round((totalAttendance / (totalAttendance + totalAbsent)) * 100) : 0;
 
+    // 指标行：总数 / 覆盖范围 / 平均出勤率
     worksheet.addRow({ metric: '总记录数', value: totalRecords, description: year + '年' + month + '月学情记录总数' });
     worksheet.addRow({ metric: '覆盖班级', value: totalClasses, description: '共' + totalClasses + '个班级有学情记录' });
     worksheet.addRow({ metric: '覆盖学科', value: totalSubjects, description: '共' + totalSubjects + '个学科有学情记录' });
@@ -711,8 +771,10 @@ class ExcelGenerator {
       byDate[r.date].push(r);
     }
 
+    // 按日期升序逐天输出趋势行
     for (const date of Object.keys(byDate).sort()) {
       const recs = byDate[date];
+      // 剔除纯学生动态，保证与汇总口径一致
       const academic = recs.filter(r => !this.isStudentDynamic(r));
       const attRecs = academic.filter(r => r.attendance !== null || r.absent !== null);
       const totalAtt = attRecs.reduce((s, r) => s + (r.attendance || 0), 0);
@@ -741,10 +803,11 @@ class ExcelGenerator {
         .map(file => ({
           fileName: file,
           filePath: path.join(this.reportsDir, file),
+          // 以文件修改时间作为报表生成时间
           createdAt: fs.statSync(path.join(this.reportsDir, file)).mtime,
           size: (fs.statSync(path.join(this.reportsDir, file)).size / 1024).toFixed(2) + 'KB'
         }))
-        .sort((a, b) => b.createdAt - a.createdAt);
+        .sort((a, b) => b.createdAt - a.createdAt);   // 最新的报表排在最前
 
       return { success: true, data: reports };
     } catch (error) {
@@ -757,6 +820,7 @@ class ExcelGenerator {
     try {
       const files = await fs.readdir(this.reportsDir);
       const now = Date.now();
+      // 保留天数来自配置（默认 90 天），换算成毫秒用于比较
       const expirationDays = this.config.system.reportRetentionDays;
       const expirationTime = expirationDays * 24 * 60 * 60 * 1000;
       let deletedCount = 0;
@@ -764,6 +828,7 @@ class ExcelGenerator {
       for (const file of files) {
         const filePath = path.join(this.reportsDir, file);
         const stats = await fs.stat(filePath);
+        // 修改时间早于保留期限的文件视为过期，直接删除
         if (now - stats.mtime > expirationTime) {
           await fs.remove(filePath);
           deletedCount++;

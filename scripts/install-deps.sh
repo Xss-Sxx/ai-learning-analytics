@@ -2,12 +2,15 @@
 
 # AI学情收集系统 - 依赖安装脚本
 # 支持Linux、macOS和Windows (WSL)
+# 执行流程：检查 Node/npm → 创建数据目录 → 安装依赖 → 校验必要文件
+#          → 生成 start.sh / start.bat → 提示配置 API Key
 
 echo "🚀 开始安装AI学情收集系统依赖..."
 
 # 检查Node.js版本
 check_nodejs() {
     if command -v node &> /dev/null; then
+        # 取主版本号：v20.11.1 → 20
         NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
         if [ "$NODE_VERSION" -ge 16 ]; then
             echo "✅ Node.js版本检查通过: $(node --version)"
@@ -38,7 +41,7 @@ check_npm() {
 create_directories() {
     echo "📁 创建必要的目录..."
     
-    # 创建数据目录
+    # -p：递归创建，且目录已存在时不报错
     mkdir -p data/sessions
     mkdir -p data/reports
     mkdir -p data/backups
@@ -52,6 +55,7 @@ install_npm_deps() {
     echo "📦 安装npm依赖..."
     
     if [ -f "package.json" ]; then
+        # $? 为上一条命令的退出码，0 表示成功
         npm install
         if [ $? -eq 0 ]; then
             echo "✅ npm依赖安装成功"
@@ -75,7 +79,7 @@ setup_api_key() {
         return 1
     fi
     
-    # 检查是否已有API密钥
+    # 仍含占位符说明尚未配置：给出指引并返回失败（提示性质，不阻断安装）
     if grep -q "your-deepseek-api-key-here" config.js; then
         echo "⚠️  请手动配置API密钥"
         echo "编辑 config.js 文件，将 'your-deepseek-api-key-here' 替换为您的实际API密钥"
@@ -95,7 +99,7 @@ setup_api_key() {
 verify_installation() {
     echo "🔍 验证安装..."
     
-    # 检查必要文件
+    # 任一必要文件缺失都会导致启动失败，先收集缺失清单再统一提示
     local required_files=(
         "package.json"
         "config.js"
@@ -129,7 +133,7 @@ verify_installation() {
 setup_startup_script() {
     echo "🎯 设置启动脚本..."
     
-    # 创建启动脚本
+    # heredoc 中 'EOF' 加引号：内容原样写入，不展开变量
     cat > start.sh << 'EOF'
 #!/bin/bash
 
@@ -148,7 +152,7 @@ echo "🚀 启动服务器..."
 node server.js
 EOF
     
-    # 设置执行权限
+    # 赋予可执行权限，否则 ./start.sh 无法直接运行
     chmod +x start.sh
     
     echo "✅ 启动脚本已创建 (start.sh)"
@@ -180,7 +184,7 @@ EOF
     echo "✅ Windows启动脚本已创建 (start.bat)"
 }
 
-# 主安装流程
+# 主安装流程：按序执行，任一步失败即 exit 1（用 $? 判断上一步返回值）
 main() {
     echo "🎯 开始安装AI学情收集系统..."
     echo "==================================="

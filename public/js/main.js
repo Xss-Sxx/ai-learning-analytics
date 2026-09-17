@@ -1,42 +1,45 @@
-// AI学情收集系统 - 前端JavaScript
+// AI学情收集系统 - 前端JavaScript（单页应用主逻辑）
+// 说明：使用原生 JS + fetch + EventSource，不依赖框架；所有数据视图都带"序号(seq)"防竞态，
+//      并配合 SSE 实时推送 + 30 秒轮询兜底，保证多端打开时数据一致。
 class AcademicStatusApp {
     constructor() {
-        this.apiBase = window.location.origin;
-        this.currentSessionId = null;
-        this.connectionStatus = 'connecting';
+        this.apiBase = window.location.origin;   // 接口基地址：与页面同源，支持局域网访问
+        this.currentSessionId = null;            // 当前会话 id（后端返回）
+        this.connectionStatus = 'connecting';    // 连接状态：connecting / connected / error
         
         this.initializeApp();
     }
 
     // 初始化应用
     initializeApp() {
-        this.studentRefreshTimer = null;
-        this.studentOverview = null;
-        this.currentStudentPanel = null;
-        this.currentStudentQuery = '';
-        this.currentStudentTabName = '';
-        this.historySeq = 0;
-        this.studentSeq = 0;
-        this.statsSeq = 0;
-        this.lastHistoryKey = null;
-        this.lastStudentKey = null;
-        this.lastStatsKey = null;
-        this.sseRefreshTimer = null;
-        this.bindEvents();
-        this.checkConnection();
-        this.loadSystemInfo();
-        this.initializeModals();
-        this.loadAiMode();
-        this.connectEvents();
-        this.startPeriodicUpdates();
+        this.studentRefreshTimer = null;         // 学生数据刷新定时器（预留）
+        this.studentOverview = null;             // 学生情况总览缓存
+        this.currentStudentPanel = null;         // 当前选中的学生分类面板
+        this.currentStudentQuery = '';           // 学生搜索关键词
+        this.currentStudentTabName = '';         // 当前选中的分类页签名（刷新后保持选中）
+        this.historySeq = 0;                     // 历史数据请求序号，用于丢弃过期响应
+        this.studentSeq = 0;                     // 学生数据请求序号
+        this.statsSeq = 0;                       // 统计请求序号
+        this.lastHistoryKey = null;              // 上次历史数据指纹，内容未变则跳过重绘
+        this.lastStudentKey = null;              // 上次学生数据指纹
+        this.lastStatsKey = null;                // 上次统计数据指纹
+        this.sseRefreshTimer = null;             // SSE 触发的防抖刷新定时器
+        this.bindEvents();                       // 绑定所有按钮/输入事件
+        this.checkConnection();                  // 先探活，成功后再建会话
+        this.loadSystemInfo();                   // 侧边栏运行状态
+        this.initializeModals();                 // 模态框内的下拉选项
+        this.loadAiMode();                       // 侧边栏 AI 模式标识
+        this.connectEvents();                    // 建立 SSE 实时通道
+        this.startPeriodicUpdates();             // 开启轮询兜底
     }
 
     // 绑定事件
+    // 说明：所有交互都在这里集中注册，便于查找与维护
     bindEvents() {
         // 发送消息
         document.getElementById('send-btn').addEventListener('click', () => this.sendMessage());
         document.getElementById('user-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter') {   // 回车即发送
                 this.sendMessage();
             }
         });
@@ -49,6 +52,7 @@ class AcademicStatusApp {
         document.getElementById('view-history-btn').addEventListener('click', () => this.showHistoryModal());
         document.getElementById('view-students-btn').addEventListener('click', () => this.showStudentModal());
         document.getElementById('refresh-students-btn').addEventListener('click', () => this.refreshStudentData());
+        // 两处"导入"按钮都触发同一个隐藏的 file input
         document.getElementById('import-students-quick-btn').addEventListener('click', () => {
             document.getElementById('student-import-file').click();
         });
@@ -64,6 +68,7 @@ class AcademicStatusApp {
 
         // 历史记录筛选
         document.getElementById('apply-filters-btn').addEventListener('click', () => this.applyHistoryFilters());
+        // 下拉/日期一旦变化立即重新筛选
         document.getElementById('history-student-category').addEventListener('change', () => this.applyHistoryFilters());
         document.getElementById('history-start-date').addEventListener('change', () => this.applyHistoryFilters());
         document.getElementById('history-end-date').addEventListener('change', () => this.applyHistoryFilters());
@@ -92,7 +97,7 @@ class AcademicStatusApp {
             
             if (data.status === 'healthy') {
                 this.setConnectionStatus('connected');
-                this.createNewSession();
+                this.createNewSession();   // 服务正常时才建立会话
             } else {
                 this.setConnectionStatus('error');
             }
@@ -108,7 +113,7 @@ class AcademicStatusApp {
         const statusDot = document.getElementById('connection-status');
         const statusText = document.getElementById('status-text');
         
-        statusDot.className = `status-dot ${status}`;
+        statusDot.className = `status-dot ${status}`;   // 通过 class 切换圆点颜色
         
         switch (status) {
             case 'connected':
@@ -138,7 +143,7 @@ class AcademicStatusApp {
             if (data.success) {
                 this.currentSessionId = data.sessionId;
                 this.updateSessionInfo();
-                this.addMessage('system', data.message, null, 'AI');
+                this.addMessage('system', data.message, null, 'AI');   // 首条欢迎语
                 
                 // 清空输入框
                 document.getElementById('user-input').value = '';
@@ -155,7 +160,7 @@ class AcademicStatusApp {
     // 发送消息
     async sendMessage() {
         const input = document.getElementById('user-input');
-        const message = input.value.trim();
+        const message = input.value.trim();   // 空消息不发送
         
         if (!message) return;
         
@@ -191,6 +196,7 @@ class AcademicStatusApp {
                 }
                 this.updateSessionState(data.state);
                 
+                // 两种情况都说明后端数据已变更，需要刷新已打开的数据视图
                 if (data.action === 'completed') {
                     this.showToast('Excel报表已生成！', 'success');
                     this.refreshOpenViews();
@@ -206,7 +212,7 @@ class AcademicStatusApp {
             this.showToast('发送消息失败', 'error');
             console.error('Send message error:', error);
         } finally {
-            this.showLoading(false);
+            this.showLoading(false);   // 无论成功失败都取消加载态
         }
     }
 
@@ -217,6 +223,7 @@ class AcademicStatusApp {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
         
+        // 仅显示时分，避免消息行过长
         const time = new Date().toLocaleTimeString('zh-CN', { 
             hour: '2-digit', 
             minute: '2-digit' 
@@ -235,6 +242,7 @@ class AcademicStatusApp {
         contentDiv.appendChild(textDiv);
 
         if (data) {
+            // 结构化数据用隐藏节点承载，便于调试时查看原始返回
             const dataDiv = document.createElement('div');
             dataDiv.className = 'message-data';
             dataDiv.style.display = 'none';
@@ -251,7 +259,7 @@ class AcademicStatusApp {
         messageDiv.appendChild(contentDiv);
         
         messagesContainer.appendChild(messageDiv);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;   // 自动滚到底部
     }
 
     // 更新会话信息
@@ -261,6 +269,7 @@ class AcademicStatusApp {
 
     // 更新会话状态
     updateSessionState(state) {
+        // 后端状态机的中文映射
         const stateText = {
             'welcome': '欢迎开始',
             'collecting': '信息收集中',
@@ -276,6 +285,7 @@ class AcademicStatusApp {
         try {
             this.showLoading(true);
             
+            // 先让后端生成/刷新当日汇总 Excel，再触发浏览器下载
             const response = await fetch(`${this.apiBase}/api/generate-today`, {
                 method: 'POST',
                 headers: {
@@ -291,7 +301,7 @@ class AcademicStatusApp {
                 const today = formatDate(new Date());
                 downloadLink.href = `${this.apiBase}/api/download/${today}`;
                 downloadLink.download = `学情汇总_${today}.xlsx`;
-                downloadLink.click();
+                downloadLink.click();   // 触发浏览器下载行为
                 
                 this.showToast('报表下载已开始', 'success');
             } else {
@@ -308,20 +318,21 @@ class AcademicStatusApp {
     // 显示历史记录模态框
     async showHistoryModal() {
         const modal = document.getElementById('history-modal');
-        modal.classList.add('show');
+        modal.classList.add('show');   // 通过 class 控制显隐动画
         
         await this.loadHistoryData();
     }
 
     // 加载历史数据
     async loadHistoryData(filters = {}, silent = false) {
-        const seq = ++this.historySeq;
+        const seq = ++this.historySeq;   // 请求序号：响应回来时若已过期则丢弃
         const historyList = document.getElementById('history-list');
 
         try {
             let url = `${this.apiBase}/api/history`;
             const params = new URLSearchParams();
             
+            // 只拼接有值的筛选参数，避免传空串给后端
             if (filters.startDate) params.append('startDate', filters.startDate);
             if (filters.endDate) params.append('endDate', filters.endDate);
             if (filters.class) params.append('class', filters.class);
@@ -333,9 +344,10 @@ class AcademicStatusApp {
             
             const response = await fetch(url);
             const data = await response.json();
-            if (seq !== this.historySeq) return;
+            if (seq !== this.historySeq) return;   // 已有更新的请求发出，放弃本次结果
 
             if (data.success) {
+                // 数据指纹：silent（后台静默刷新）模式下内容未变则不重绘，避免列表闪烁
                 const key = `teacher:${JSON.stringify(data.data.map(item => [item.fileName, item.submittedAt, item.concerns]))}`;
                 if (silent && key === this.lastHistoryKey) return;
                 this.lastHistoryKey = key;
@@ -354,7 +366,7 @@ class AcademicStatusApp {
     // 显示历史数据
     displayHistoryData(historyData) {
         const historyList = document.getElementById('history-list');
-        historyList.innerHTML = '';
+        historyList.innerHTML = '';   // 先清空再整体重建
         
         if (historyData.length === 0) {
             const category = document.getElementById('history-student-category').value;
@@ -369,6 +381,7 @@ class AcademicStatusApp {
             const submittedAt = record.submittedAt || record.date;
             const formattedTime = formatDateTime(submittedAt);
             
+            // 拼装条目：标题行 + 摘要信息 + 关注事项 + 操作按钮
             historyItem.innerHTML = `
                 <div class="history-item-header">
                     <h4>${record.class ? `${record.class} - ` : ''}${record.subject || '关注记录'}</h4>
@@ -420,6 +433,7 @@ class AcademicStatusApp {
             if (seq !== this.statsSeq) return;
             
             if (data.success) {
+                // 内容未变化时不重绘，减少无意义 DOM 操作
                 const key = `${data.data.uptime}|${data.data.sessions}|${data.data.todayReports}`;
                 if (silent && key === this.lastStatsKey) return;
                 this.lastStatsKey = key;
@@ -442,13 +456,14 @@ class AcademicStatusApp {
         try {
             const response = await fetch(`${this.apiBase}/api/download-record/${fileName}`);
             if (response.ok) {
+                // 用 Blob + 临时 <a> 的方式下载，可正确携带文件名
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = fileName;
                 a.click();
-                window.URL.revokeObjectURL(url);
+                window.URL.revokeObjectURL(url);   // 释放内存中的 Blob URL
                 this.showToast('下载成功', 'success');
             } else {
                 this.showToast('下载失败', 'error');
@@ -465,7 +480,7 @@ class AcademicStatusApp {
             const data = await response.json();
             
             if (data.success) {
-                // 在新窗口中显示记录详情
+                // 在新窗口中直接展示 JSON 详情（轻量、无需额外页面）
                 const newWindow = window.open('', '_blank');
                 newWindow.document.write(`
                     <html>
@@ -500,6 +515,7 @@ class AcademicStatusApp {
             if (seq !== this.studentSeq) return;
 
             if (data.success) {
+                // 指纹包含数据来源、更新时间与今日动态，任一变化都需重绘
                 const key = `${data.data.sourceFile}|${data.data.updatedAt}|${JSON.stringify(data.data.todayConcerns || {})}`;
                 if (silent && key === this.lastStudentKey) return;
                 this.lastStudentKey = key;
@@ -517,6 +533,7 @@ class AcademicStatusApp {
     // 刷新学生情况数据
     async refreshStudentData() {
         try {
+            // 主动让后端重新解析 xlsx（绕过服务端缓存）
             const response = await fetch(`${this.apiBase}/api/students/refresh`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
@@ -537,6 +554,7 @@ class AcademicStatusApp {
     // 渲染学生情况分类与汇总表
     renderStudentData(overview) {
         this.studentOverview = overview;
+        // 同步更新指纹，避免随后的静默刷新重复渲染同一份数据
         if (overview && overview.updatedAt) {
             this.lastStudentKey = `${overview.sourceFile}|${overview.updatedAt}|${JSON.stringify(overview.todayConcerns || {})}`;
         }
@@ -544,6 +562,7 @@ class AcademicStatusApp {
         const tabsContainer = document.getElementById('student-tabs');
         tabsContainer.innerHTML = '';
 
+        // 汇总表排在最前，其余分类按 Excel 工作表顺序排列
         const panels = [];
         if (overview.summary) {
             panels.push({ name: '汇总表', data: overview.summary });
@@ -553,6 +572,7 @@ class AcademicStatusApp {
         });
 
         let activeIndex = 0;
+        // 保持用户上次选中的页签（刷新数据后不跳回第一个）
         if (this.currentStudentTabName) {
             const savedIndex = panels.findIndex(panel => panel.name === this.currentStudentTabName);
             if (savedIndex !== -1) {
@@ -565,7 +585,7 @@ class AcademicStatusApp {
             button.className = `tab-btn${index === activeIndex ? ' active' : ''}`;
             button.textContent = panel.name;
             button.addEventListener('click', () => {
-                this.currentStudentTabName = panel.name;
+                this.currentStudentTabName = panel.name;   // 记录选中项
                 tabsContainer.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
                 this.currentStudentPanel = panel.data;
@@ -583,13 +603,15 @@ class AcademicStatusApp {
     // 渲染单个学生分类表格
     renderStudentTable(panel) {
         const wrap = document.getElementById('student-table-wrap');
-        wrap.innerHTML = '';
+        wrap.innerHTML = '';   // 清空旧表格
 
+        // 表头为空说明该工作表没有可解析的数据
         if (!panel || !panel.headers || panel.headers.length === 0) {
             wrap.innerHTML = '<div class="no-data">暂无数据</div>';
             return;
         }
 
+        // 前端本地按关键词过滤（任一单元格包含关键词即命中）
         const query = (this.currentStudentQuery || '').trim().toLowerCase();
         const rows = query
             ? panel.rows.filter(row => row.some(cell => String(cell).toLowerCase().includes(query)))
@@ -608,7 +630,7 @@ class AcademicStatusApp {
 
         const hasToday = this.studentOverview && this.studentOverview.todayConcerns &&
             Object.keys(this.studentOverview.todayConcerns).length > 0;
-        wrap.appendChild(this.createStudentHScrollBar());
+        wrap.appendChild(this.createStudentHScrollBar());   // 顶部横向滚动条
         wrap.appendChild(this.createStudentTable(panel, rows, {
             hasToday,
             todayConcerns: (this.studentOverview && this.studentOverview.todayConcerns) || {}
@@ -621,6 +643,7 @@ class AcademicStatusApp {
         const table = document.createElement('table');
         table.className = 'student-table';
 
+        // 表头：直接沿用 Excel 的列名
         const thead = document.createElement('thead');
         const headRow = document.createElement('tr');
         panel.headers.forEach(header => {
@@ -628,6 +651,7 @@ class AcademicStatusApp {
             th.textContent = header;
             headRow.appendChild(th);
         });
+        // 存在"最近7天动态"时额外追加一列
         if (options.hasToday) {
             const th = document.createElement('th');
             th.textContent = '最近动态';
@@ -637,6 +661,7 @@ class AcademicStatusApp {
         table.appendChild(thead);
 
         const tbody = document.createElement('tbody');
+        // 定位姓名/班级列，用于拼接"最近动态"的索引键（与后端 buildTodayConcerns 的键一致）
         const nameIndex = panel.headers.findIndex(header => header.includes('姓名'));
         const classIndex = panel.headers.findIndex(header => header.includes('班级'));
         rows.forEach(row => {
@@ -663,9 +688,9 @@ class AcademicStatusApp {
     applyStudentSearch(query) {
         this.currentStudentQuery = query;
         if (query.trim() && this.studentOverview) {
-            this.renderGlobalSearch();
+            this.renderGlobalSearch();   // 有关键词时跨分类搜索
         } else if (this.currentStudentPanel) {
-            this.renderStudentTable(this.currentStudentPanel);
+            this.renderStudentTable(this.currentStudentPanel);   // 清空关键词则回到当前分类
         }
     }
 
@@ -676,10 +701,12 @@ class AcademicStatusApp {
 
         const query = (this.currentStudentQuery || '').trim().toLowerCase();
         const panels = [];
+        // 全局搜索不包含"汇总表"（它是统计表，没有学生明细）
         this.studentOverview.categories.forEach(category => {
             panels.push({ name: category.name, data: category });
         });
 
+        // 在所有分类中收集命中的行，并记住它来自哪个分类
         const matched = [];
         panels.forEach(panel => {
             panel.data.rows.forEach(row => {
@@ -697,7 +724,7 @@ class AcademicStatusApp {
             return;
         }
 
-        const headers = ['分类', '姓名', '班级', '联系电话'];
+        const headers = ['分类', '姓名', '班级', '联系电话'];   // 搜索结果统一展示这四列
 
         const table = document.createElement('table');
         table.className = 'student-table';
@@ -715,6 +742,7 @@ class AcademicStatusApp {
         const tbody = document.createElement('tbody');
         matched.forEach(item => {
             const panel = panels.find(p => p.name === item.category);
+            // 建立列名 → 下标映射，便于按关键词取列（不同工作表列顺序可能不同）
             const headerMap = {};
             panel.data.headers.forEach((header, index) => {
                 headerMap[header] = index;
@@ -749,11 +777,13 @@ class AcademicStatusApp {
     }
 
     // 横向滚动条与表格滚动联动，始终显示在顶部
+    // 实现思路：在表格上方放一个等宽的占位容器，双向同步 scrollLeft
     setupStudentHScroll() {
         const wrap = document.getElementById('student-table-wrap');
         const bar = wrap && wrap.querySelector('.student-hscroll');
         if (!wrap || !bar) return;
 
+        // 内容未超出宽度时无需滚动条
         if (wrap.scrollWidth <= wrap.clientWidth + 1) {
             bar.classList.add('hidden');
             return;
@@ -762,16 +792,19 @@ class AcademicStatusApp {
 
         const maxLeft = wrap.scrollWidth - wrap.clientWidth;
         bar.innerHTML = '';
+        // 撑出一个与表格等宽的占位块，使滚动条长度与内容宽度一致
         const spacer = document.createElement('div');
         spacer.style.width = `${bar.clientWidth + maxLeft}px`;
         spacer.style.height = '1px';
         bar.appendChild(spacer);
 
+        // 重复调用时先解绑旧监听，避免事件堆积
         if (this._studentHScrollHandlers) {
             wrap.removeEventListener('scroll', this._studentHScrollHandlers.wrap);
             bar.removeEventListener('scroll', this._studentHScrollHandlers.bar);
         }
 
+        // syncing 标志防止两侧互相触发的无限循环
         let syncing = false;
         const wrapHandler = () => {
             if (syncing) return;
@@ -795,6 +828,7 @@ class AcademicStatusApp {
         const file = input.files && input.files[0];
         if (!file) return;
 
+        // 前端先做一次扩展名校验，减少无效请求
         if (!/\.xlsx$/i.test(file.name)) {
             this.showToast('请选择xlsx文件', 'warning');
             input.value = '';
@@ -804,6 +838,7 @@ class AcademicStatusApp {
         const reader = new FileReader();
         reader.onload = async () => {
             try {
+                // readAsDataURL 结果是 "data:...;base64,xxxx"，取逗号后的部分
                 const dataBase64 = String(reader.result).split(',')[1] || '';
                 const response = await fetch(`${this.apiBase}/api/students/import`, {
                     method: 'POST',
@@ -812,7 +847,7 @@ class AcademicStatusApp {
                 });
                 const result = await response.json();
                 if (result.success) {
-                    this.renderStudentData(result.data);
+                    this.renderStudentData(result.data);   // 立即用新数据重绘
                     this.showToast('学生情况导入成功', 'success');
                 } else {
                     this.showToast(result.message || '导入失败', 'error');
@@ -820,7 +855,7 @@ class AcademicStatusApp {
             } catch (error) {
                 this.showToast('导入失败', 'error');
             } finally {
-                input.value = '';
+                input.value = '';   // 清空 value，保证同一文件可再次选择
             }
         };
         reader.onerror = () => {
@@ -845,12 +880,13 @@ class AcademicStatusApp {
 
             if (data.success) {
                 const status = document.getElementById('settings-status');
+                // 明确告诉教师当前是"AI 对话"还是"本地规则"，避免误解为不可用
                 status.textContent = data.data.mode === 'ai'
                     ? `当前模式：AI对话模式（${data.data.model}）`
                     : '当前模式：本地规则模式（未配置API Key，仍可正常填报）';
                 document.getElementById('settings-base-url').value = data.data.baseURL || '';
                 document.getElementById('settings-model').value = data.data.model || '';
-                document.getElementById('settings-api-key').value = '';
+                document.getElementById('settings-api-key').value = '';   // 出于安全考虑不回显已保存的 Key
                 this.updateAiModeStatus(data.data.mode);
             }
         } catch (error) {
@@ -864,6 +900,7 @@ class AcademicStatusApp {
         const baseURL = document.getElementById('settings-base-url').value.trim();
         const model = document.getElementById('settings-model').value.trim();
 
+        // Key 是必填项：清空 Key 请使用"清除 API Key"按钮
         if (!apiKey) {
             this.showToast('请输入API Key', 'warning');
             return;
@@ -879,8 +916,8 @@ class AcademicStatusApp {
 
             if (data.success) {
                 this.showToast('API设置已保存，AI对话模式已启用', 'success');
-                this.updateAiModeStatus('ai');
-                this.loadSettingsStatus();
+                this.updateAiModeStatus('ai');    // 侧边栏标识同步更新
+                this.loadSettingsStatus();        // 回读一次，保证界面与后端一致
             } else {
                 this.showToast(data.message || '保存失败', 'error');
             }
@@ -892,6 +929,7 @@ class AcademicStatusApp {
     // 清除API Key
     async clearApiKey() {
         try {
+            // 传空字符串即表示清除（后端约定）
             const response = await fetch(`${this.apiBase}/api/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -924,11 +962,13 @@ class AcademicStatusApp {
         }
     }
 
+    // 侧边栏 AI 模式文案：ai → 已启用，其余 → 本地规则
     updateAiModeStatus(mode) {
         document.getElementById('ai-mode').textContent = mode === 'ai' ? '已启用' : '本地规则';
     }
 
     // 关闭模态框
+    // 关闭时顺带重置筛选条件/搜索词，保证下次打开是干净状态
     closeModal(modal) {
         if (!modal) return;
 
@@ -942,6 +982,7 @@ class AcademicStatusApp {
         }
 
         if (modal.id === 'history-modal') {
+            // 清空日期与下拉筛选
             ['history-start-date', 'history-end-date'].forEach(id => {
                 const input = document.getElementById(id);
                 if (input) input.value = '';
@@ -956,12 +997,13 @@ class AcademicStatusApp {
     }
 
     // 初始化模态框
+    // 动态填充"班级"与"学生分类"下拉框；接口失败时用内置班级兜底
     async initializeModals() {
         const classSelect = document.getElementById('history-class');
         const categorySelect = document.getElementById('history-student-category');
         const fallbackClasses = ['初一(1)班', '初一(2)班', '初一(3)班', '初一(4)班'];
 
-        let classes = fallbackClasses;
+        let classes = fallbackClasses;   // 默认值，接口成功后再覆盖
 
         try {
             const response = await fetch(`${this.apiBase}/api/meta`);
@@ -981,7 +1023,7 @@ class AcademicStatusApp {
         });
 
         try {
-            const response = await fetch(`${this.apiBase}/api/students/overview`);
+          const response = await fetch(`${this.apiBase}/api/students/overview`);
             const data = await response.json();
             if (data.success) {
                 data.data.categories.forEach(category => {
@@ -1010,8 +1052,9 @@ class AcademicStatusApp {
     }
 
     // 刷新当前打开的数据视图
+    // 只刷新"当前可见"的视图，关闭的模态框不浪费请求
     refreshOpenViews() {
-        this.loadStatsData(true);
+        this.loadStatsData(true);   // 侧边栏统计始终刷新（静默）
         if (document.getElementById('history-modal').classList.contains('show')) {
             this.loadHistoryData(this.getHistoryFilters(), true);
         }
@@ -1023,14 +1066,17 @@ class AcademicStatusApp {
     // 服务端实时推送：数据变更后毫秒级刷新
     connectEvents() {
         try {
+            // EventSource 自动重连，无需手写重试逻辑
             const source = new EventSource(`${this.apiBase}/api/events`);
             source.addEventListener('data-changed', (event) => this.onDataChanged(event));
             this.eventSource = source;
         } catch (error) {
+            // SSE 不可用时仍可由 30 秒轮询兜底
             console.warn('实时推送连接失败，将使用轮询兜底:', error);
         }
     }
 
+    // 收到变更事件后做 50ms 防抖：短时间内的多次变更只触发一次刷新
     onDataChanged(event) {
         clearTimeout(this.sseRefreshTimer);
         this.sseRefreshTimer = setTimeout(() => {
@@ -1038,7 +1084,7 @@ class AcademicStatusApp {
         }, 50);
     }
 
-    // 格式化运行时间
+    // 格式化运行时间：按天/小时/分钟/秒逐级降级展示
     formatUptime(milliseconds) {
         const seconds = Math.floor(milliseconds / 1000);
         const minutes = Math.floor(seconds / 60);
@@ -1057,6 +1103,7 @@ class AcademicStatusApp {
     }
 
     // 显示/隐藏加载状态
+    // 显示时禁用发送按钮并展示"正在输入"指示器，避免重复提交
     showLoading(show) {
         const typing = document.getElementById('typing-indicator');
         const sendBtn = document.getElementById('send-btn');
@@ -1075,7 +1122,7 @@ class AcademicStatusApp {
         const toastContent = toast.querySelector('.toast-content');
         
         toastContent.textContent = message;
-        toast.className = `toast ${type}`;
+        toast.className = `toast ${type}`;   // type 决定配色：info/success/error/warning
         toast.classList.remove('hidden');
         
         // 3秒后自动隐藏
@@ -1086,18 +1133,20 @@ class AcademicStatusApp {
 }
 
 // 初始化应用
-const app = new AcademicStatusApp();
+const app = new AcademicStatusApp();   // 全局唯一实例，供 HTML 内联 onclick 调用（如 app.downloadRecord）
 
 // 原生日期格式化工具（替代外部moment.js依赖）
 function pad2(value) {
-    return String(value).padStart(2, '0');
+    return String(value).padStart(2, '0');   // 补零到两位
 }
 
+// 日期 → YYYY-MM-DD
 function formatDate(date) {
     const d = new Date(date);
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+// 日期时间 → YYYY-MM-DD HH:mm（解析失败时原样返回，避免显示 Invalid Date）
 function formatDateTime(value) {
     const d = new Date(value);
     if (isNaN(d.getTime())) return value || '';

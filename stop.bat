@@ -1,6 +1,9 @@
 @echo off
+REM 切换到 UTF-8 代码页，避免中文输出乱码
 chcp 65001 >nul
+REM 启用延迟变量展开：循环中更新 FOUND/FAILED 后需要立即读取新值
 setlocal enabledelayedexpansion
+REM 切到脚本所在目录
 cd /d "%~dp0"
 title 停止 AI学情收集系统
 
@@ -11,13 +14,16 @@ echo   ==========================================
 echo.
 
 set PORT=3000
+REM FOUND：是否找到占用端口的进程；FAILED：是否有进程停止失败
 set FOUND=0
 set FAILED=0
 
+REM 逐个结束监听该端口的进程（token 5 为 PID）
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do (
     set FOUND=1
     echo   正在停止进程 PID %%a ...
     taskkill /F /PID %%a >nul 2>&1
+    REM errorlevel 非 0 说明结束失败，通常是权限不足
     if errorlevel 1 (
         set FAILED=1
         echo   [失败] 无法停止进程 %%a

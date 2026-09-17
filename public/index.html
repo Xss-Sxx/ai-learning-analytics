@@ -1,20 +1,25 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <!-- 字符编码：必须声明，否则中文会乱码 -->
     <meta charset="UTF-8">
+    <!-- 视口设置：局域网内手机/平板访问时按设备宽度自适应 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI学情收集助手</title>
+    <!-- 全站唯一样式表 -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <!-- 页面最外层容器：负责整体栅格与最大宽度 -->
     <div class="container">
-        <!-- 头部 -->
+        <!-- 头部：标题 + 与后端的连接状态指示灯 -->
         <header class="header">
             <div class="header-content">
                 <div class="logo">
                     <h1>AI学情收集助手</h1>
                     <p class="subtitle">智能对话式学情数据收集系统</p>
                 </div>
+                <!-- 状态灯与文字由 main.js 的 setConnectionStatus 动态更新 -->
                 <div class="status-indicator">
                     <span id="connection-status" class="status-dot connecting"></span>
                     <span id="status-text">连接中...</span>
@@ -22,15 +27,17 @@
             </div>
         </header>
 
-        <!-- 主要内容区 -->
+        <!-- 主要内容区：左侧对话区 + 右侧信息栏 -->
         <main class="main-content">
-            <!-- 聊天界面 -->
+            <!-- 聊天界面：系统的核心交互区域 -->
             <div class="chat-container">
                 <div class="chat-header">
                     <h2>学情对话助手</h2>
+                    <!-- 新建会话：清空上下文重新开始一次填报 -->
                     <button id="new-session-btn" class="btn btn-secondary">新建会话</button>
                 </div>
                 
+                <!-- 消息列表：所有气泡由 main.js 的 addMessage 动态追加 -->
                 <div id="chat-messages" class="chat-messages">
                     <!-- 消息将在这里动态添加 -->
                     <div class="message system">
@@ -40,6 +47,7 @@
                             <div class="message-time">--</div>
                         </div>
                     </div>
+                    <!-- "执行中..."指示器：请求期间显示，避免用户重复提交 -->
                     <div id="typing-indicator" class="message ai typing hidden">
                         <div class="message-avatar">AI</div>
                         <div class="message-content">
@@ -48,6 +56,7 @@
                     </div>
                 </div>
 
+                <!-- 输入区：回车或点击"发送"提交 -->
                 <div class="chat-input-container">
                     <div class="input-wrapper">
                         <input 
@@ -64,9 +73,9 @@
                 </div>
             </div>
 
-            <!-- 侧边栏 -->
+            <!-- 侧边栏：会话信息 / 快捷入口 / 运行状态 -->
             <aside class="sidebar">
-                <!-- 会话信息 -->
+                <!-- 会话信息：当前会话 id 与状态机状态 -->
                 <div class="sidebar-section">
                     <h3>会话信息</h3>
                     <div class="session-info">
@@ -81,7 +90,7 @@
                     </div>
                 </div>
 
-                <!-- 快速操作 -->
+                <!-- 快速操作：报表下载、历史查询、学生情况、导入、API 设置 -->
                 <div class="sidebar-section">
                     <h3>快速操作</h3>
                     <div class="quick-actions">
@@ -103,7 +112,7 @@
                     </div>
                 </div>
 
-                <!-- 系统状态 -->
+                <!-- 系统状态：运行时长、活跃会话数、今日记录数、AI 模式 -->
                 <div class="sidebar-section">
                     <h3>系统状态</h3>
                     <div class="system-status">
@@ -137,7 +146,7 @@
         </footer>
     </div>
 
-    <!-- 历史记录模态框 -->
+    <!-- 历史记录模态框：按日期/班级/学生分类筛选历史填报 -->
     <div id="history-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -148,6 +157,7 @@
                 </div>
             </div>
             <div class="modal-body">
+                <!-- 筛选条：日期区间 + 班级 + 学生分类；班级与分类选项由 main.js 动态填充 -->
                 <div class="history-filters">
                     <input type="date" id="history-start-date" placeholder="开始日期">
                     <input type="date" id="history-end-date" placeholder="结束日期">
@@ -159,6 +169,7 @@
                     </select>
                     <button id="apply-filters-btn" class="btn btn-primary">应用筛选</button>
                 </div>
+                <!-- 列表容器：内容由 displayHistoryData 渲染 -->
                 <div id="history-list" class="history-list">
                     <!-- 历史记录将在这里显示 -->
                 </div>
@@ -166,27 +177,32 @@
         </div>
     </div>
 
-    <!-- 学生情况模态框 -->
+    <!-- 学生情况模态框：展示《初一学生情况汇总表》的分类明细与最近动态 -->
     <div id="students-modal" class="modal">
         <div class="modal-content modal-wide">
             <div class="modal-header">
                 <h3>学生情况</h3>
                 <div class="modal-header-actions">
+                    <!-- 刷新：绕过缓存重新解析 xlsx；导入：选择本地 xlsx 覆盖 -->
                     <button id="refresh-students-btn" class="btn btn-outline btn-sm">刷新</button>
                     <button id="import-students-btn" class="btn btn-outline btn-sm">导入</button>
                     <button class="modal-close">&times;</button>
                 </div>
             </div>
             <div class="modal-body">
+                <!-- 数据来源与更新时间提示 -->
                 <div id="student-meta" class="student-meta"></div>
+                <!-- 关键词搜索：姓名/班级/电话等任意列命中即可 -->
                 <input type="text" id="student-search" class="student-search" placeholder="搜索姓名、班级、联系电话等">
+                <!-- 分类页签（汇总表 + 各分类工作表） -->
                 <div id="student-tabs" class="tabs"></div>
+                <!-- 表格容器：由 renderStudentTable / renderGlobalSearch 渲染 -->
                 <div id="student-table-wrap" class="student-table-wrap"></div>
             </div>
         </div>
     </div>
 
-    <!-- AI服务设置模态框 -->
+    <!-- AI服务设置模态框：配置 DeepSeek API Key，保存后立即生效（无需重启） -->
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -194,9 +210,11 @@
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
+                <!-- 当前模式提示：AI对话模式 / 本地规则模式 -->
                 <div id="settings-status" class="settings-status"></div>
                 <div class="settings-form">
                     <label for="settings-api-key">DeepSeek API Key</label>
+                    <!-- 用 password 类型，避免旁人在屏幕上直接看到 Key -->
                     <input type="password" id="settings-api-key" placeholder="sk-..." autocomplete="off">
                     <label for="settings-base-url">接口地址（可选）</label>
                     <input type="text" id="settings-base-url" placeholder="https://api.deepseek.com">
@@ -211,16 +229,15 @@
         </div>
     </div>
 
-    <!-- 加载指示器 -->
-    <!-- 消息提示 -->
+    <!-- 消息提示（Toast）：轻量反馈，3 秒后自动消失 -->
     <div id="toast" class="toast hidden">
         <div class="toast-content"></div>
     </div>
 
-    <!-- 学生数据导入文件选择 -->
+    <!-- 隐藏的文件选择框：由"导入学生数据"按钮间接触发 -->
     <input type="file" id="student-import-file" accept=".xlsx" class="hidden">
 
-    <!-- JavaScript -->
+    <!-- 应用主逻辑（放在 body 末尾，保证 DOM 已就绪） -->
     <script src="js/main.js"></script>
 </body>
 </html>

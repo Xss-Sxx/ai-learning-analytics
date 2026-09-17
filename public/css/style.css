@@ -1,47 +1,57 @@
-/* 全局样式：黑白极简，参考 ChatGPT 视觉风格 */
+/* ==========================================================================
+   全局样式：黑白极简风格，参考 ChatGPT 的视觉语言
+   配色约定：#1f1f1f 主文字 / #8a8a8a 次要文字 / #e5e5e5 边框 / #171717 主色（按钮）
+   ========================================================================== */
+
+/* 重置：清除浏览器默认边距，并统一盒模型为 border-box（宽高包含内边距与边框） */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
+/* 通用隐藏类：!important 保证能覆盖组件自身的 display 规则 */
 .hidden {
     display: none !important;
 }
 
+/* 页面基础排版：优先使用系统中文字体，保证 Windows/macOS/Linux 下观感一致 */
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: #ffffff;
-    color: #1f1f1f;
-    min-height: 100vh;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
+    background: #ffffff;          /* 纯白背景 */
+    color: #1f1f1f;               /* 主文字色 */
+    min-height: 100vh;            /* 至少占满一屏 */
+    line-height: 1.6;             /* 中文正文行高，提升可读性 */
+    -webkit-font-smoothing: antialiased;   /* 抗锯齿，文字更细腻 */
 }
 
+/* 页面容器：限制最大宽度并居中，纵向铺满视口高度 */
 .container {
-    max-width: 1440px;
-    margin: 0 auto;
+    max-width: 1440px;            /* 宽屏下不至于把聊天区拉得过长 */
+    margin: 0 auto;               /* 水平居中 */
     padding: 16px 20px;
-    height: 100vh;
+    height: 100vh;                /* 固定视口高度，内部区域自行滚动 */
     min-height: 100vh;
-    display: flex;
+    display: flex;                /* 头部/主体/底部纵向排列 */
     flex-direction: column;
 }
 
-/* 头部 */
+/* ---------- 头部：标题与连接状态 ---------- */
 .header {
     background: #ffffff;
-    border-bottom: 1px solid #e5e5e5;
+    border-bottom: 1px solid #e5e5e5;   /* 细分隔线代替阴影，保持极简 */
     padding: 14px 2px;
     margin-bottom: 16px;
 }
 
+/* 头部左右两端对齐：左侧标题、右侧状态灯 */
 .header-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
+/* 主标题：字号克制，弱化装饰 */
 .logo h1 {
     color: #1f1f1f;
     font-size: 1.15rem;
@@ -49,18 +59,21 @@ body {
     letter-spacing: 0;
 }
 
+/* 副标题：小字灰色，作为补充说明 */
 .subtitle {
     color: #8a8a8a;
     font-size: 0.8rem;
     margin-top: 2px;
 }
 
+/* 状态指示区：圆点 + 文字水平排列 */
 .status-indicator {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
+/* 状态圆点：默认灰色（未连接） */
 .status-dot {
     width: 8px;
     height: 8px;
@@ -68,50 +81,57 @@ body {
     background: #d4d4d4;
 }
 
+/* 已连接：实心黑 */
 .status-dot.connected {
     background: #171717;
 }
 
+/* 连接中：灰色 + 呼吸动画，提示"正在尝试" */
 .status-dot.connecting {
     background: #a3a3a3;
     animation: pulse 1.6s ease-in-out infinite;
 }
 
+/* 连接失败：红色，便于一眼识别异常 */
 .status-dot.error {
     background: #d93025;
 }
 
+/* 呼吸动画：透明度往复变化 */
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
 }
 
+/* 状态文字：与圆点配套的小字说明 */
 #status-text {
     font-size: 0.8rem;
     color: #8a8a8a;
 }
 
-/* 主内容区 */
+/* ---------- 主内容区：左侧对话 + 右侧侧边栏 ---------- */
 .main-content {
-    display: flex;
+    display: flex;        /* 横向两栏布局 */
     gap: 16px;
-    flex: 1;
+    flex: 1;              /* 占满头部与底部之间的剩余高度 */
     margin-bottom: 16px;
-    min-height: 0;
+    min-height: 0;        /* 关键：允许内部子元素正确计算滚动区域 */
 }
 
+/* 对话容器：纵向三段式（标题 / 消息列表 / 输入区） */
 .chat-container {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
+    flex: 1;              /* 占据除侧边栏外的全部宽度 */
+    min-width: 0;         /* 防止长文本把容器撑开 */
+    min-height: 0;        /* 配合 overflow 让消息区可滚动 */
     background: #ffffff;
     border: 1px solid #e5e5e5;
     border-radius: 8px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden;     /* 裁掉圆角外的内容 */
 }
 
+/* 对话区标题栏 */
 .chat-header {
     padding: 14px 18px;
     border-bottom: 1px solid #e5e5e5;
@@ -120,46 +140,54 @@ body {
     align-items: center;
 }
 
+/* 对话区标题文字 */
 .chat-header h2 {
     color: #1f1f1f;
     font-size: 0.95rem;
     font-weight: 600;
 }
 
+/* 消息列表：占据剩余高度并可纵向滚动，新消息由 JS 自动滚到底部 */
 .chat-messages {
     flex: 1;
-    min-height: 0;
+    min-height: 0;         /* 允许在 flex 容器中收缩并出现滚动条 */
     overflow-y: auto;
     padding: 24px 20px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 18px;             /* 消息之间的间距 */
     background: #ffffff;
 }
 
+/* 细滚动条（仅 WebKit 内核）：宽 6px，不抢视觉 */
 .chat-messages::-webkit-scrollbar {
     width: 6px;
 }
 
+/* 轨道透明，避免出现灰底 */
 .chat-messages::-webkit-scrollbar-track {
     background: transparent;
 }
 
+/* 滑块浅灰圆角 */
 .chat-messages::-webkit-scrollbar-thumb {
     background: #d4d4d4;
     border-radius: 3px;
 }
 
+/* 单条消息：头像 + 内容横向排列，并带入场动画 */
 .message {
     display: flex;
     gap: 10px;
     animation: messageSlide 0.2s ease-out;
 }
 
+/* 用户消息反向排列，使气泡靠右显示 */
 .message.user {
     flex-direction: row-reverse;
 }
 
+/* 消息入场动画：轻微上浮 + 淡入 */
 @keyframes messageSlide {
     from {
         opacity: 0;
@@ -171,6 +199,7 @@ body {
     }
 }
 
+/* 头像方块：固定尺寸、不可选中（避免拖拽时选中文字） */
 .message-avatar {
     width: 30px;
     height: 30px;
@@ -180,15 +209,17 @@ body {
     justify-content: center;
     font-size: 0.7rem;
     font-weight: 600;
-    flex-shrink: 0;
+    flex-shrink: 0;        /* 不被内容挤压变形 */
     user-select: none;
 }
 
+/* 用户头像：黑底白字 */
 .message.user .message-avatar {
     background: #171717;
     color: #ffffff;
 }
 
+/* AI 与系统头像：浅灰底深色字 */
 .message.ai .message-avatar {
     background: #f0f0f0;
     color: #1f1f1f;
@@ -199,33 +230,38 @@ body {
     color: #1f1f1f;
 }
 
+/* 消息内容区：限制最大宽度，保留留白使气泡不至于横贯整屏 */
 .message-content {
     flex: 1;
     max-width: 76%;
-    min-width: 0;
+    min-width: 0;          /* 允许长链接/长单词换行 */
 }
 
+/* 用户消息内容右对齐 */
 .message.user .message-content {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
 }
 
+/* 气泡文本：保留换行、超长内容强制换行 */
 .message-text {
     padding: 10px 14px;
     border-radius: 8px;
     font-size: 0.9rem;
     line-height: 1.65;
-    white-space: pre-wrap;
-    word-break: break-word;
+    white-space: pre-wrap;    /* 保留 AI 回复中的换行 */
+    word-break: break-word;   /* 长串字符自动折行 */
 }
 
+/* 用户气泡：黑底白字，右下角小圆角形成"尾巴"指向头像 */
 .message.user .message-text {
     background: #171717;
     color: #ffffff;
     border-bottom-right-radius: 2px;
 }
 
+/* AI 气泡：透明底色，弱化容器感，更像对话而非卡片 */
 .message.ai .message-text,
 .message.system .message-text {
     background: transparent;
@@ -233,33 +269,39 @@ body {
     padding: 4px 2px;
 }
 
+/* 系统消息（欢迎语）：灰色居中，作为引导文案 */
 .message.system .message-text {
     color: #8a8a8a;
     text-align: center;
 }
 
+/* "执行中..."提示：灰字斜体，表示正在等待后端 */
 .message.typing .message-text {
     color: #8a8a8a;
     font-style: italic;
 }
 
+/* 消息时间戳：小字浅灰 */
 .message-time {
     font-size: 0.7rem;
     color: #b0b0b0;
     margin-top: 4px;
 }
 
+/* 输入区容器：与消息列表用上边框分隔 */
 .chat-input-container {
     padding: 14px 18px 16px;
     border-top: 1px solid #e5e5e5;
     background: #ffffff;
 }
 
+/* 输入框与发送按钮同一行 */
 .input-wrapper {
     display: flex;
     gap: 8px;
 }
 
+/* 输入框：占据剩余宽度，聚焦时边框加深提示可输入 */
 #user-input {
     flex: 1;
     padding: 10px 14px;
@@ -268,18 +310,21 @@ body {
     font-size: 0.9rem;
     color: #1f1f1f;
     background: #ffffff;
-    outline: none;
+    outline: none;                 /* 去掉浏览器默认聚焦光圈，改用边框变色 */
     transition: border-color 0.2s;
 }
 
+/* 聚焦态：边框转为黑色 */
 #user-input:focus {
     border-color: #1f1f1f;
 }
 
+/* 占位提示文字颜色 */
 #user-input::placeholder {
     color: #a3a3a3;
 }
 
+/* 输入框下方提示语 */
 .input-hint {
     font-size: 0.75rem;
     color: #a3a3a3;
@@ -287,7 +332,9 @@ body {
     margin-top: 8px;
 }
 
-/* 按钮 */
+/* ---------- 按钮：三套基础样式（主/次/线框） ---------- */
+
+/* 按钮基类：统一内边距、圆角、字号与过渡；inline-flex 便于图标+文字居中 */
 .btn {
     display: inline-flex;
     align-items: center;
@@ -302,42 +349,49 @@ body {
     white-space: nowrap;
 }
 
+/* 按下时轻微缩小，提供点击反馈 */
 .btn:active {
     transform: scale(0.98);
 }
 
+/* 主按钮：黑底白字（如"发送""保存设置"） */
 .btn-primary {
     background: #171717;
     color: #ffffff;
 }
 
+/* 主按钮悬停加深 */
 .btn-primary:hover {
     background: #000000;
 }
 
+/* 次按钮：浅灰底（如"新建会话"） */
 .btn-secondary {
     background: #f0f0f0;
     color: #1f1f1f;
 }
 
+/* 次按钮悬停 */
 .btn-secondary:hover {
     background: #e5e5e5;
 }
 
+/* 线框按钮：白底 + 灰边框（如侧边栏快捷操作） */
 .btn-outline {
     background: #ffffff;
     color: #1f1f1f;
     border-color: #d4d4d4;
 }
 
+/* 线框按钮悬停：底色微亮 + 边框转黑，明确可点击 */
 .btn-outline:hover {
     background: #f5f5f5;
     border-color: #1f1f1f;
 }
 
-/* 侧边栏 */
+/* ---------- 侧边栏：会话信息 / 快速操作 / 系统状态 ---------- */
 .sidebar {
-    width: 300px;
+    width: 300px;         /* 固定宽度，窄屏时由媒体查询改为整行 */
     background: #ffffff;
     border: 1px solid #e5e5e5;
     border-radius: 8px;
@@ -345,9 +399,10 @@ body {
     display: flex;
     flex-direction: column;
     gap: 18px;
-    overflow-y: auto;
+    overflow-y: auto;     /* 内容过长时侧边栏独立滚动 */
 }
 
+/* 侧边栏小标题：小号大写字距，弱化存在感 */
 .sidebar-section h3 {
     color: #8a8a8a;
     font-size: 0.75rem;
@@ -359,6 +414,7 @@ body {
     padding-bottom: 8px;
 }
 
+/* 信息列表：纵向排列，项与项之间留 10px */
 .session-info,
 .system-status {
     display: flex;
@@ -366,6 +422,7 @@ body {
     gap: 10px;
 }
 
+/* 单条信息：标签在左、值在右 */
 .info-item,
 .status-item {
     display: flex;
@@ -375,12 +432,14 @@ body {
     font-size: 0.8rem;
 }
 
+/* 标签：灰色小字，不参与收缩 */
 .info-label,
 .status-label {
     color: #8a8a8a;
     flex-shrink: 0;
 }
 
+/* 值：单行显示，超长省略（如很长的会话 ID） */
 .info-value,
 .status-value {
     color: #1f1f1f;
@@ -389,18 +448,22 @@ body {
     white-space: nowrap;
 }
 
+/* 快捷操作区：按钮纵向堆叠 */
 .quick-actions {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
+/* 快捷按钮占满整行，文字左对齐更像菜单项 */
 .quick-actions .btn {
     width: 100%;
     justify-content: flex-start;
 }
 
-/* 底部 */
+/* ---------- 底部信息栏 ---------- */
+
+/* 底部：细上边框分隔，内容小字灰色居中 */
 .footer {
     border-top: 1px solid #e5e5e5;
     padding: 14px 2px;
@@ -412,25 +475,29 @@ body {
     text-align: center;
 }
 
-/* 模态框 */
+/* ---------- 模态框：历史记录 / 学生情况 / API 设置共用 ---------- */
+
+/* 模态框遮罩：默认隐藏，全屏覆盖并压暗背景 */
 .modal {
-    display: none;
+    display: none;                          /* 未打开时不占位 */
     position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 1000;
+    inset: 0;                               /* 四边贴合视口 */
+    background: rgba(0, 0, 0, 0.45);        /* 半透明黑遮罩 */
+    z-index: 1000;                          /* 位于页面内容之上 */
 }
 
+/* 打开状态：用 flex 让内容面板居中 */
 .modal.show {
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+/* 内容面板：限宽限高，内部独立滚动 */
 .modal-content {
     width: 640px;
-    max-width: 92vw;
-    max-height: 82vh;
+    max-width: 92vw;      /* 小屏时自动收窄 */
+    max-height: 82vh;     /* 避免超出屏幕 */
     background: #ffffff;
     border-radius: 8px;
     display: flex;
@@ -439,6 +506,7 @@ body {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
 }
 
+/* 面板头部：标题与操作按钮分列两端 */
 .modal-header {
     padding: 16px 20px;
     border-bottom: 1px solid #e5e5e5;
@@ -453,6 +521,7 @@ body {
     font-weight: 600;
 }
 
+/* 关闭按钮（×）：无边框幽灵按钮，悬停出现浅灰底 */
 .modal-close {
     background: none;
     border: none;
@@ -474,12 +543,14 @@ body {
     color: #1f1f1f;
 }
 
+/* 面板主体：内容超出时内部滚动，头尾保持固定 */
 .modal-body {
     padding: 18px 20px;
     overflow-y: auto;
     flex: 1;
 }
 
+/* 历史筛选条：控件自动换行，适配窄屏 */
 .history-filters {
     display: flex;
     gap: 8px;
@@ -487,6 +558,7 @@ body {
     flex-wrap: wrap;
 }
 
+/* 筛选控件统一样式：日期选择器与下拉框外观一致 */
 .history-filters input,
 .history-filters select {
     padding: 8px 10px;
@@ -498,17 +570,20 @@ body {
     outline: none;
 }
 
+/* 筛选控件聚焦：边框转黑 */
 .history-filters input:focus,
 .history-filters select:focus {
     border-color: #1f1f1f;
 }
 
+/* 历史列表：纵向堆叠，条目间距 10px */
 .history-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 
+/* 学生名单表格容器：限制高度并允许横纵向滚动（列较多） */
 .history-student-wrap {
     overflow: auto;
     max-height: 55vh;
@@ -516,6 +591,7 @@ body {
     border-radius: 8px;
 }
 
+/* 空数据占位文案：居中灰色 */
 .no-data {
     color: #a3a3a3;
     text-align: center;
@@ -523,6 +599,7 @@ body {
     font-size: 0.85rem;
 }
 
+/* 历史条目卡片：浅灰底 + 细边框，悬停时加深边框提示可交互 */
 .history-item {
     background: #fafafa;
     padding: 14px 16px;
@@ -610,13 +687,16 @@ body {
 }
 
 /* 学生情况 */
+
+/* 数据来源与更新时间提示条：小字灰色，允许长路径换行 */
 .student-meta {
     color: #a3a3a3;
     font-size: 0.75rem;
     margin-bottom: 10px;
-    word-break: break-all;
+    word-break: break-all;   /* 文件路径很长时强制换行，避免撑破布局 */
 }
 
+/* 学生搜索框：整行宽度 */
 .student-search {
     width: 100%;
     padding: 9px 12px;
@@ -629,10 +709,12 @@ body {
     margin-bottom: 12px;
 }
 
+/* 聚焦态：边框变黑，与全站输入控件一致 */
 .student-search:focus {
     border-color: #1f1f1f;
 }
 
+/* 分类页签容器：横向排列并允许换行，底部用细线分隔表格 */
 .tabs {
     display: flex;
     flex-wrap: wrap;
@@ -642,6 +724,7 @@ body {
     border-bottom: 1px solid #e5e5e5;
 }
 
+/* 页签按钮：白底灰框（选中态见 .active） */
 .tab-btn {
     padding: 7px 14px;
     border: 1px solid #d4d4d4;
@@ -653,16 +736,19 @@ body {
     transition: background-color 0.2s, color 0.2s, border-color 0.2s;
 }
 
+/* 页签悬停：边框加深作为可点击提示 */
 .tab-btn:hover {
     border-color: #1f1f1f;
 }
 
+/* 选中页签：黑底白字，表示当前展示的分类 */
 .tab-btn.active {
     background: #171717;
     color: #ffffff;
     border-color: #171717;
 }
 
+/* 表格外层容器：限高 + 双向滚动，避免整页被长表格带高 */
 .student-table-wrap {
     overflow: auto;
     max-height: 56vh;
@@ -670,6 +756,7 @@ body {
     border-radius: 8px;
 }
 
+/* 顶部同步滚动条：sticky 固定在表格上方，便于拖动查看右侧列 */
 .student-hscroll {
     position: sticky;
     top: 0;
@@ -679,28 +766,33 @@ body {
     height: 12px;
     background: #fafafa;
     border-bottom: 1px solid #e5e5e5;
-    scrollbar-width: thin;
+    scrollbar-width: thin;   /* Firefox 细滚动条 */
 }
 
+/* Chromium 内核下的滚动条高度 */
 .student-hscroll::-webkit-scrollbar {
     height: 8px;
 }
 
+/* 滚动条滑块：浅灰圆角 */
 .student-hscroll::-webkit-scrollbar-thumb {
     background: #c9c9c9;
     border-radius: 4px;
 }
 
+/* 滚动条轨道：浅灰底 */
 .student-hscroll::-webkit-scrollbar-track {
     background: #f0f0f0;
 }
 
+/* 学生表格：表头与单元格统一不换行，配合横向滚动查看全部列 */
 .student-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.8rem;
 }
 
+/* 单元格：内边距 + 细下边框 */
 .student-table th,
 .student-table td {
     padding: 8px 10px;
@@ -709,6 +801,7 @@ body {
     white-space: nowrap;
 }
 
+/* 表头：浅灰底、吸顶，滚动时保持可见 */
 .student-table th {
     background: #fafafa;
     color: #6b6b6b;
@@ -718,11 +811,14 @@ body {
     z-index: 1;
 }
 
+/* 末行去掉下边框 */
 .student-table tbody tr:last-child td {
     border-bottom: none;
 }
 
 /* AI服务设置 */
+
+/* 设置面板顶部：当前模式说明条 */
 .settings-status {
     padding: 10px 12px;
     background: #fafafa;
@@ -754,22 +850,26 @@ body {
     outline: none;
 }
 
+/* 设置输入框聚焦态 */
 .settings-form input:focus {
     border-color: #1f1f1f;
 }
 
+/* 设置面板底部按钮行 */
 .settings-actions {
     display: flex;
     gap: 8px;
     margin-top: 16px;
 }
 
+/* 统计卡片栅格：自适应列宽，最少 200px 一列 */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 12px;
 }
 
+/* 单个统计卡片：浅灰底 + 细边框 + 居中排版 */
 .stat-card {
     background: #fafafa;
     padding: 18px;
@@ -778,6 +878,7 @@ body {
     text-align: center;
 }
 
+/* 卡片标题：小字灰色 */
 .stat-card h4 {
     color: #8a8a8a;
     font-size: 0.75rem;
@@ -785,6 +886,7 @@ body {
     margin-bottom: 10px;
 }
 
+/* 卡片主数值：放大加粗，视觉焦点 */
 .stat-value {
     font-size: 1.6rem;
     font-weight: 600;
@@ -793,17 +895,20 @@ body {
     word-break: break-word;
 }
 
+/* 卡片辅助说明 */
 .stat-label {
     color: #a3a3a3;
     font-size: 0.75rem;
 }
 
+/* 统计区块：与上方内容用细线分隔 */
 .stats-section {
     margin-top: 18px;
     border-top: 1px solid #e5e5e5;
     padding-top: 14px;
 }
 
+/* 统计区块标题 */
 .stats-section h4 {
     color: #1f1f1f;
     font-size: 0.85rem;
@@ -811,12 +916,14 @@ body {
     margin-bottom: 10px;
 }
 
+/* 统计明细表：紧凑型表格，仅用下边框分行 */
 .stats-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.8rem;
 }
 
+/* 表格单元格：统一内边距与分隔线 */
 .stats-table th,
 .stats-table td {
     padding: 8px 12px;
@@ -824,13 +931,16 @@ body {
     text-align: left;
 }
 
+/* 表头：浅灰底 */
 .stats-table th {
     background: #fafafa;
     color: #6b6b6b;
     font-weight: 600;
 }
 
-/* 加载指示器 */
+/* ---------- 全屏加载指示器 ---------- */
+
+/* 加载遮罩：半透明白底覆盖全屏，阻止误操作 */
 .loading {
     position: fixed;
     inset: 0;
@@ -839,35 +949,41 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
+    z-index: 9999;      /* 高于模态框，保证始终可见 */
     color: #1f1f1f;
 }
 
+/* 加载中隐藏（JS 控制） */
 .loading.hidden {
     display: none;
 }
 
+/* 旋转圈：用上边框高亮形成"缺口"旋转效果 */
 .loading-spinner {
     width: 32px;
     height: 32px;
     border: 3px solid #e5e5e5;
-    border-top-color: #171717;
+    border-top-color: #171717;   /* 深色缺口 */
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin-bottom: 14px;
 }
 
+/* 匀速旋转动画 */
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
 
+/* 加载提示文字 */
 .loading-text {
     font-size: 0.85rem;
     color: #6b6b6b;
 }
 
-/* 消息提示 */
+/* ---------- 消息提示（Toast） ---------- */
+
+/* 固定在右上角，从右侧滑入 */
 .toast {
     position: fixed;
     top: 20px;
@@ -882,10 +998,12 @@ body {
     animation: toastSlide 0.25s ease-out;
 }
 
+/* 隐藏状态 */
 .toast.hidden {
     display: none;
 }
 
+/* 滑入动画 */
 @keyframes toastSlide {
     from {
         transform: translateX(100%);
@@ -897,15 +1015,19 @@ body {
     }
 }
 
+/* 错误提示：红色底 */
 .toast.error {
     background: #d93025;
 }
 
+/* 成功提示：绿色底 */
 .toast.success {
     background: #1e7e4f;
 }
 
-/* 响应式 */
+/* ---------- 响应式适配 ---------- */
+
+/* 中等屏幕（平板/小笔记本）：改为上下布局，侧边栏移到顶部 */
 @media (max-width: 1024px) {
     .main-content {
         flex-direction: column;
@@ -913,25 +1035,29 @@ body {
 
     .sidebar {
         width: 100%;
-        order: -1;
+        order: -1;      /* 侧边栏（快捷入口）优先展示 */
     }
 }
 
+/* 小屏（手机）：进一步压缩留白，模态框接近满屏 */
 @media (max-width: 768px) {
     .container {
         padding: 10px 12px;
     }
 
+    /* 头部改为纵向居中排列 */
     .header-content {
         flex-direction: column;
         gap: 8px;
         text-align: center;
     }
 
+    /* 气泡占更宽比例，充分利用窄屏 */
     .message-content {
         max-width: 88%;
     }
 
+    /* 模态框几乎铺满屏幕 */
     .modal-content {
         width: 95%;
         margin: 16px;
@@ -943,8 +1069,9 @@ body {
 }
 
 
-/* 打印样式 */
+/* ---------- 打印样式：只保留对话内容，便于存档 ---------- */
 @media print {
+    /* 隐藏所有交互性/导航性元素 */
     .header,
     .sidebar,
     .footer,
